@@ -1,7 +1,7 @@
 CXX := g++
-CXXFLAGS := -std=c++20 -O2
+CXXFLAGS := -std=c++20 -O2 -fopenmp
 INCLUDES := -I. -Irepos/llama.cpp/include -Irepos/llama.cpp/ggml/include
-LDLIBS := -lpthread -lm -ldl
+LDLIBS := -lpthread -lm -ldl -lgomp
 
 SRCDIR := src
 OBJDIR := build/obj
@@ -15,7 +15,7 @@ OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 LLAMA_LIBS := $(shell find repos/llama.cpp/build -name '*.a')
 
 $(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $^ $(LLAMA_LIBS) $(LDLIBS) -o $@
+	$(CXX) $(CXXFLAGS) $^ -Wl,--start-group $(LLAMA_LIBS) -Wl,--end-group $(LDLIBS) -o $@
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
 	@mkdir -p $(OBJDIR)
