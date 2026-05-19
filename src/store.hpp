@@ -10,6 +10,7 @@
 struct LeafCandidate {
     std::string              path;       // absolute leaf directory path
     std::vector<std::string> file_list;  // .md filenames in this leaf
+    bool                     stored = false;  // true if fallback already wrote the .md file
 };
 
 // ── Store mode entry point §8.2 ────────────────────────────────────────
