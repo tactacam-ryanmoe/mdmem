@@ -1,6 +1,7 @@
 #include "cli.hpp"
 #include "main.hpp"
 #include "model_engine.hpp"
+#include "query.hpp"
 #include "storage.hpp"
 #include "store.hpp"
 
@@ -37,11 +38,10 @@ int main(int argc, char* argv[]) {
             return run_store(args, engine, storage);
         }
 
-        // Query mode: not yet implemented (T12+)
+        // Query mode: multi-branch scoring → leaf synthesis → merge
         if (args.query.has_value()) {
-            std::cout << "[QUERY_MODE_NOT_IMPLEMENTED] "
-                         "Query mode will be implemented in T12+.\n";
-            return 0;
+            mdmem::StorageEngine storage;
+            return run_query(args, engine, storage);
         }
 
         return 0;
