@@ -1,16 +1,56 @@
-#include "main.hpp"
 #include "cli.hpp"
+#include "main.hpp"
 #include "model_engine.hpp"
+#include "storage.hpp"
+#include "store.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 
 int main(int argc, char* argv[]) {
-    CliArgs args = parse_args(argc, argv);
+    try {
+        // ── Parse arguments ──────────────────────────────────────────
 
-    ModelEngine engine(args.model, args.threads, args.ctx_size, args.max_tokens);
+        CliArgs args = parse_args(argc, argv);
 
-    std::string response = engine.infer("You are a helpful assistant.", "Say hello.");
-    std::cout << response << '\n';
+        // ── Load model ───────────────────────────────────────────────
 
-    return 0;
+        ModelEngine engine(args.model, args.threads,
+                           args.ctx_size, args.max_tokens);
+
+        // ── Acquire lock §9 ──────────────────────────────────────────
+
+        mdmem::LockMode lock_mode = args.store.has_value()
+            ? mdmem::LockMode::EXCLUSIVE
+            : mdmem::LockMode::SHARED;
+
+        mdmem::FileLock lock(args.memdir, lock_mode);
+
+        // ── Route to mode ────────────────────────────────────────────
+
+        if (args.store.has_value()) {
+            // Store mode: multi-branch traversal → placement →
+            // classification → body validation → file write
+            mdmem::StorageEngine storage;
+            return run_store(args, engine, storage);
+        }
+
+        // Query mode: not yet implemented (T12+)
+        if (args.query.has_value()) {
+            std::cout << "[QUERY_MODE_NOT_IMPLEMENTED] "
+                         "Query mode will be implemented in T12+.\n";
+            return 0;
+        }
+
+        return 0;
+
+    } catch (const std::runtime_error& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 2;
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 1;
+    }
 }
