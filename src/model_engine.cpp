@@ -12,7 +12,7 @@ ModelEngine::ModelEngine(const std::string& model_path, int n_threads, int n_ctx
     auto model_params = llama_model_default_params();
     model_ = llama_model_load_from_file(model_path.c_str(), model_params);
     if (model_ == nullptr) {
-        std::fprintf(stderr, "Error: failed to load model from '%s'\n", model_path.c_str());
+        std::fprintf(stderr, "error: failed to load model from '%s'\n", model_path.c_str());
         std::exit(6);
     }
 
@@ -24,7 +24,7 @@ ModelEngine::ModelEngine(const std::string& model_path, int n_threads, int n_ctx
 
     ctx_ = llama_init_from_model(model_, ctx_params);
     if (ctx_ == nullptr) {
-        std::fprintf(stderr, "Error: failed to create context\n");
+        std::fprintf(stderr, "error: failed to create context\n");
         llama_model_free(model_);
         model_ = nullptr;
         std::exit(6);
@@ -65,7 +65,7 @@ void ModelEngine::clear_kv_cache()
     // seq_id < 0: match any sequence; p0 < 0: from position 0; p1 < 0: to infinity
     bool ok = llama_memory_seq_rm(mem, -1, -1, -1);
     if (!ok) {
-        std::fprintf(stderr, "Warning: failed to clear KV cache\n");
+        std::fprintf(stderr, "[WARN] Failed to clear KV cache\n");
     }
 }
 
@@ -91,24 +91,62 @@ std::string ModelEngine::infer(const std::string& system_prompt, const std::stri
     if (n_tokens < 0) {
         // Buffer too small — negative return is -needed_size
         int32_t needed = -n_tokens;
+
         if (needed > n_ctx_) {
-            std::fprintf(stderr, "Error: prompt requires %d tokens but context size is %d\n", needed, n_ctx_);
-            std::exit(3);
+            // §7.1: prompt exceeds context window — truncate input to fit, warn, proceed
+            // Estimate chars to truncate using 3.0 chars/token ratio + safety margin
+            int32_t excess_tokens = needed - n_ctx_;
+            size_t truncate_chars = static_cast<size_t>(excess_tokens * 4);
+            if (truncate_chars >= prompt.size()) {
+                truncate_chars = prompt.size() > 1 ? prompt.size() - 1 : 0;
+            }
+            prompt.resize(prompt.size() - truncate_chars);
+            std::fprintf(stderr,
+                "[WARN] Prompt exceeded context window by ~%d tokens. "
+                "Truncated input by %zu chars to fit %d-token limit.\n",
+                excess_tokens, truncate_chars, n_ctx_);
+
+            // Retry tokenization with truncated prompt
+            n_tokens = llama_tokenize(
+                vocab_,
+                prompt.c_str(),
+                static_cast<int32_t>(prompt.size()),
+                tokens.data(),
+                n_ctx_,
+                true,
+                false
+            );
+            // If still fails, resize and retry normally
+            if (n_tokens < 0) {
+                needed = -n_tokens;
+                tokens.resize(static_cast<size_t>(needed));
+                n_tokens = llama_tokenize(
+                    vocab_,
+                    prompt.c_str(),
+                    static_cast<int32_t>(prompt.size()),
+                    tokens.data(),
+                    needed,
+                    true,
+                    false
+                );
+            }
+        } else {
+            // Buffer was too small but within context limit — resize and retry
+            tokens.resize(static_cast<size_t>(needed));
+            n_tokens = llama_tokenize(
+                vocab_,
+                prompt.c_str(),
+                static_cast<int32_t>(prompt.size()),
+                tokens.data(),
+                needed,
+                true,
+                false
+            );
         }
-        tokens.resize(static_cast<size_t>(needed));
-        n_tokens = llama_tokenize(
-            vocab_,
-            prompt.c_str(),
-            static_cast<int32_t>(prompt.size()),
-            tokens.data(),
-            needed,
-            true,
-            false
-        );
     }
 
     if (n_tokens < 0) {
-        std::fprintf(stderr, "Error: tokenization failed (returned %d)\n", n_tokens);
+        std::fprintf(stderr, "error: tokenization failed (returned %d)\n", n_tokens);
         std::exit(3);
     }
 
@@ -119,11 +157,11 @@ std::string ModelEngine::infer(const std::string& system_prompt, const std::stri
     int32_t decode_rc = llama_decode(ctx_, batch);
 
     if (decode_rc < 0) {
-        std::fprintf(stderr, "Error: llama_decode failed (returned %d)\n", decode_rc);
+        std::fprintf(stderr, "error: llama_decode failed (returned %d)\n", decode_rc);
         std::exit(3);
     }
     if (decode_rc > 0) {
-        std::fprintf(stderr, "Warning: partial context overflow in llama_decode (%d tokens dropped)\n", decode_rc);
+        std::fprintf(stderr, "[WARN] Partial context overflow in llama_decode (%d tokens dropped)\n", decode_rc);
     }
 
     // 4. Generate via sampler loop
@@ -150,11 +188,11 @@ std::string ModelEngine::infer(const std::string& system_prompt, const std::stri
         decode_rc = llama_decode(ctx_, single_batch);
 
         if (decode_rc < 0) {
-            std::fprintf(stderr, "Error: llama_decode failed during generation (returned %d)\n", decode_rc);
+            std::fprintf(stderr, "error: llama_decode failed during generation (returned %d)\n", decode_rc);
             std::exit(3);
         }
         if (decode_rc > 0) {
-            std::fprintf(stderr, "Warning: partial overflow during generation (%d tokens dropped)\n", decode_rc);
+            std::fprintf(stderr, "[WARN] Partial overflow during generation (%d tokens dropped)\n", decode_rc);
         }
     }
 
@@ -193,7 +231,7 @@ std::string ModelEngine::infer(const std::string& system_prompt, const std::stri
         if (n_chars >= 0) {
             response.assign(text_buf.data(), static_cast<size_t>(n_chars));
         } else {
-            std::fprintf(stderr, "Error: detokenization failed (returned %d)\n", n_chars);
+            std::fprintf(stderr, "error: detokenization failed (returned %d)\n", n_chars);
             std::exit(3);
         }
     }
