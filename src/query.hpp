@@ -1,0 +1,6 @@
+#ifndef MDMEM_QUERY_HPP
+#define MDMEM_QUERY_HPP
+
+
+
+#endif // MDMEM_QUERY_HPP

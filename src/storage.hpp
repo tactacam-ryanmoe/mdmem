@@ -1,0 +1,6 @@
+#ifndef MDMEM_STORAGE_HPP
+#define MDMEM_STORAGE_HPP
+
+
+
+#endif // MDMEM_STORAGE_HPP

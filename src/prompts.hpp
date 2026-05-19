@@ -1,0 +1,6 @@
+#ifndef MDMEM_PROMPTS_HPP
+#define MDMEM_PROMPTS_HPP
+
+
+
+#endif // MDMEM_PROMPTS_HPP
